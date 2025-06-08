@@ -1,2 +1,2 @@
-gcc tetris.c
+gcc main.c
 ./a.exe
