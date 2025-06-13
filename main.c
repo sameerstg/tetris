@@ -7,15 +7,15 @@
 #define width 14
 #define height 20
 
-char fg = '1';
-char bg = '0';
+char fg = '#';
+char bg = '*';
 
 typedef struct
 {
     char c;
 } tile;
 
-char tileTypes[4] = {'T', 'S', 'L', 'I'};
+char tileTypes[] = {'T', 'S', 'L', 'I', 'Z'};
 
 char getRandTileType()
 {
@@ -53,6 +53,56 @@ void render()
         }
         printf("\n");
     }
+    fflush(stdout);
+}
+
+void checkAndClearLines()
+{
+    for (int y = height - 1; y >= 0; y--)
+    {
+        int full = 1;
+        for (int x = 0; x < width; x++)
+        {
+            if (board[y * width + x].c != fg)
+            {
+                full = 0;
+                break;
+            }
+        }
+
+        if (full)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                board[y * width + x].c = bg;
+            }
+
+            for (int ty = y - 1; ty >= 0; ty--)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    board[(ty + 1) * width + x].c = board[ty * width + x].c;
+                }
+            }
+
+            for (int x = 0; x < width; x++)
+            {
+                board[x].c = bg;
+            }
+
+            y++;
+        }
+    }
+}
+
+void saveMov()
+{
+    for (int i = 0; i < movLen; i++)
+    {
+        board[mov[i]].c = fg;
+    }
+
+    checkAndClearLines();
 }
 
 void createNewMov()
@@ -83,12 +133,15 @@ void createNewMov()
         movW = 2;
         movH = 3;
         break;
+    case 'Z':
+        movW = 3;
+        movH = 2;
+        break;
     default:
         movW = movH = 1;
         break;
     }
 
-    // Allocate with maximum potential tiles (e.g., T or L may have holes)
     mov = malloc(sizeof(int) * movW * movH);
     movLen = 0;
 
@@ -105,20 +158,18 @@ void createNewMov()
                 skip = 1;
             if (newType == 'L' && x == 1 && y != 2)
                 skip = 1;
+            if (newType == 'Z' && !(
+                                      (x == 0 && y == 0) ||
+                                      (x == 1 && y == 0) ||
+                                      (x == 1 && y == 1) ||
+                                      (x == 2 && y == 1)))
+                skip = 1;
 
             if (!skip)
             {
                 mov[movLen++] = (baseY + y) * width + (randX + x);
             }
         }
-    }
-}
-
-void saveMov()
-{
-    for (int i = 0; i < movLen; i++)
-    {
-        board[mov[i]].c = fg;
     }
 }
 
@@ -133,7 +184,6 @@ void init()
 
 void calc(int dx, int dy)
 {
-    // Check if movement is possible
     for (int i = 0; i < movLen; i++)
     {
         int x = mov[i] % width;
@@ -141,7 +191,6 @@ void calc(int dx, int dy)
         int newX = x + dx;
         int newY = y + dy;
 
-        // Out of bounds?
         if (newX < 0 || newX >= width || newY >= height)
         {
             if (dy > 0)
@@ -149,11 +198,12 @@ void calc(int dx, int dy)
                 saveMov();
                 createNewMov();
             }
+
             return;
         }
 
         int newPos = newY * width + newX;
-        // Collision with static block?
+
         int isOverlapping = 0;
         for (int j = 0; j < movLen; j++)
         {
@@ -174,7 +224,6 @@ void calc(int dx, int dy)
         }
     }
 
-    // Move piece
     for (int i = 0; i < movLen; i++)
     {
         int x = mov[i] % width;
@@ -184,12 +233,12 @@ void calc(int dx, int dy)
 
     render();
 }
+
 void rotate()
 {
     if (mov == NULL)
         return;
 
-    // Get top-left anchor (min x and y)
     int maxX = width, maxY = height;
     for (int i = 0; i < movLen; i++)
     {
@@ -201,7 +250,6 @@ void rotate()
             maxY = y;
     }
 
-    // Convert to local grid coordinates
     int localX[movLen], localY[movLen];
     for (int i = 0; i < movLen; i++)
     {
@@ -211,7 +259,6 @@ void rotate()
         localY[i] = y - maxY;
     }
 
-    // Determine piece bounding box
     int boxW = 0, boxH = 0;
     for (int i = 0; i < movLen; i++)
     {
@@ -249,7 +296,6 @@ void rotate()
         newPos[i] = pos;
     }
 
-    // Apply rotation
     for (int i = 0; i < movLen; i++)
         mov[i] = newPos[i];
 
@@ -266,6 +312,59 @@ void movePiece(int key)
         calc(0, 1);
     else if (key == 'w')
         rotate();
+    else if (key == ' ')
+    {
+        while (1)
+        {
+            int canMove = 1;
+            for (int i = 0; i < movLen; i++)
+            {
+                int x = mov[i] % width;
+                int y = mov[i] / width;
+                int newY = y + 1;
+
+                if (newY >= height)
+                {
+                    canMove = 0;
+                    break;
+                }
+
+                int newPos = newY * width + x;
+
+                int isOverlapping = 0;
+                for (int j = 0; j < movLen; j++)
+                {
+                    if (newPos == mov[j])
+                    {
+                        isOverlapping = 1;
+                        break;
+                    }
+                }
+
+                if (!isOverlapping && board[newPos].c == fg)
+                {
+                    canMove = 0;
+                    break;
+                }
+            }
+
+            if (!canMove)
+            {
+                saveMov();
+                createNewMov();
+                break;
+            }
+
+            for (int i = 0; i < movLen; i++)
+            {
+                int x = mov[i] % width;
+                int y = mov[i] / width;
+                mov[i] = (y + 1) * width + x;
+            }
+        }
+
+        render();
+    }
 }
 
 int main()
@@ -279,14 +378,12 @@ int main()
     {
         DWORD now = GetTickCount();
 
-        // Move down every second
         if (now - lastTick >= 1000)
         {
             calc(0, 1);
             lastTick = now;
         }
 
-        // Handle input
         if (_kbhit())
         {
             int key = getch();
